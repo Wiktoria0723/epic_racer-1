@@ -1,6 +1,12 @@
 `timescale 1ns / 1ps
 
-module draw_img(
+module draw_img
+#(parameter
+    RECT_WIDTH = 128,
+    RECT_LENGTH = 128,
+    ADDR_WIDTH = 14
+)
+(
     input wire [10:0] hcount_in,
     input wire hsync_in,
     input wire hblnk_in,
@@ -10,6 +16,7 @@ module draw_img(
     input wire pclk,
     input wire rst,
     input wire visible,
+    input wire [1:0] rotation,
     input wire [11:0] rgb_in,
     input wire [11:0] rgb_pixel,
     input wire [10:0] xpos,
@@ -21,14 +28,16 @@ module draw_img(
     output reg vsync_out,
     output reg vblnk_out,
     output reg [11:0] rgb_out,
-    output reg [13:0] pixel_addr
+    output reg [ADDR_WIDTH-1:0] pixel_addr
 );
-    
-parameter RECT_WIDTH = 128;
-parameter RECT_LENGTH = 128;
+
+localparam NO_ROTATION = 2'b00;
+localparam ROTATE_90 = 2'b01;
+localparam ROTATE_270 = 2'b11;
+localparam ROTATE_180 = 2'b10;
 
 reg [11:0] rgb_out_nxt;
-reg [13:0] pixel_addr_nxt;
+reg [ADDR_WIDTH-1:0] pixel_addr_nxt;
 reg [10:0] addrx, addry;
 wire [10:0] vcount_delayed, hcount_delayed;
 wire hsync_delayed, vsync_delayed, hblnk_delayed, vblnk_delayed;
@@ -59,17 +68,39 @@ always @(posedge pclk)
 
 always @*
 begin
-    addrx = hcount_in - xpos;
-    addry = vcount_in - ypos;
-         
+    case(rotation)
+    NO_ROTATION:
+    begin
+        addrx = hcount_in - xpos;
+        addry = vcount_in - ypos;
+    end
+    ROTATE_90:
+    begin
+        addrx = vcount_in - ypos;
+        addry = hcount_in - xpos;
+    end
+    ROTATE_180:
+    begin
+        addrx = RECT_WIDTH - 1 - (hcount_in - xpos);
+        addry = RECT_LENGTH - 1 - (vcount_in - ypos);
+    end
+    ROTATE_270:
+    begin
+        addrx = RECT_LENGTH - 1 - (vcount_in - ypos);
+        addry = RECT_WIDTH - 1 - (hcount_in - xpos);
+    end
+    endcase
     rgb_out_nxt = rgb_in;
     pixel_addr_nxt = 0;
+    
     if(visible)
     begin
         if(hcount_in >= xpos && hcount_in < (xpos + RECT_WIDTH) && vcount_in >= ypos && vcount_in < (ypos + RECT_LENGTH))
         begin
-            rgb_out_nxt = rgb_pixel;
-            pixel_addr_nxt = { (addry[6:0]), (addrx[6:0]) };
+            if(rgb_pixel != 12'hfac) begin
+                rgb_out_nxt = rgb_pixel;
+            end
+            pixel_addr_nxt = { (addry[(ADDR_WIDTH/2)-1:0]), (addrx[(ADDR_WIDTH/2)-1:0]) };
         end
     end
 end
